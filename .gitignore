@@ -1,0 +1,11 @@
+# Environments
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+.pytest_cache/
+.DS_Store
+.superpowers/
