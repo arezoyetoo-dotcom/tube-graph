@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Header, DEMO_VIDEOS } from './components/Header';
+import { ForceGraphView } from './components/ForceGraphView';
 import { VideoGraphResponse, GraphNode, getCategoryStyle } from './types';
 import { 
   Network, 
@@ -315,37 +316,14 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Interactive Node Matrix Preview (Task 4 Scaffold -> Task 5 will mount ForceGraphView) */}
-                <div className="flex-1 flex flex-col justify-center">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto pr-1">
-                    {graphData.nodes.map((node) => {
-                      const style = getCategoryStyle(node.category);
-                      const isSelected = selectedNode?.id === node.id;
-                      return (
-                        <div
-                          key={node.id}
-                          onClick={() => setSelectedNode(node)}
-                          className={`p-3.5 rounded-xl cursor-pointer transition-all border ${
-                            isSelected
-                              ? `${style.border} ${style.bg} ring-1 ring-white/20 shadow-lg`
-                              : 'bg-[#101622]/60 hover:bg-[#162032] border-white/5 hover:border-white/15'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-semibold text-white truncate">
-                              {node.label}
-                            </span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-medium ${style.text} ${style.bg}`}>
-                              {node.timestamp_formatted}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                            {node.summary}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
+                {/* Obsidian Force-Directed Canvas Graph */}
+                <div className="flex-1 w-full min-h-[460px] relative rounded-xl overflow-hidden bg-[#070A10] border border-white/5">
+                  <ForceGraphView
+                    nodes={graphData.nodes}
+                    edges={graphData.edges}
+                    selectedNode={selectedNode}
+                    onSelectNode={setSelectedNode}
+                  />
                 </div>
               </div>
 
