@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Header, DEMO_VIDEOS } from './components/Header';
 import { ForceGraphView } from './components/ForceGraphView';
-import { VideoGraphResponse, GraphNode, getCategoryStyle } from './types';
+import { NodeInspector, formatVaultPath } from './components/NodeInspector';
+import { VideoPlayerModal } from './components/VideoPlayerModal';
+import { VideoGraphResponse, GraphNode, ExportObsidianResponse } from './types';
 import { 
   Network, 
   Sparkles, 
@@ -14,7 +16,11 @@ import {
   FolderSync,
   Clock,
   User,
-  Hash
+  Hash,
+  Play,
+  Check,
+  PanelRightOpen,
+  Copy
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5417';
@@ -24,7 +30,20 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [graphData, setGraphData] = useState<VideoGraphResponse | null>(null);
+  
+  // Inspector & Selection State
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
+
+  // Video Sync State
+  const [isVideoOpen, setIsVideoOpen] = useState<boolean>(false);
+  const [seekTime, setSeekTime] = useState<number>(0);
+
+  // Obsidian Export State
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportStatus, setExportStatus] = useState<ExportObsidianResponse | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [copiedVaultPath, setCopiedVaultPath] = useState<boolean>(false);
 
   const handleAnalyze = async (targetUrl?: string) => {
     const videoUrl = targetUrl || url;
@@ -32,6 +51,8 @@ export default function App() {
 
     setIsLoading(true);
     setError(null);
+    setExportStatus(null);
+    setExportError(null);
 
     try {
       // First try configured API_BASE, fallback to relative /api if fails
@@ -57,6 +78,8 @@ export default function App() {
       setGraphData(data);
       if (data.nodes.length > 0) {
         setSelectedNode(data.nodes[0]);
+        setIsInspectorOpen(true);
+        setSeekTime(data.nodes[0].timestamp_seconds);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to analyze video transcript';
@@ -66,10 +89,67 @@ export default function App() {
     }
   };
 
+  const handleExportObsidian = async () => {
+    if (!graphData) return;
+
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/export-obsidian`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(graphData),
+      }).catch(() => {
+        return fetch('/api/export-obsidian', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(graphData),
+        });
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null);
+        throw new Error(errJson?.detail || `Export failed with HTTP ${response.status}`);
+      }
+
+      const data: ExportObsidianResponse = await response.json();
+      setExportStatus(data);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to export notes to Obsidian';
+      setExportError(message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleJumpToTimestamp = (seconds: number) => {
+    setSeekTime(seconds);
+    setIsVideoOpen(true);
+  };
+
+  const handleSelectNode = (node: GraphNode | null) => {
+    setSelectedNode(node);
+    if (node) {
+      setIsInspectorOpen(true);
+    }
+  };
+
   const handleReset = () => {
     setGraphData(null);
     setSelectedNode(null);
+    setIsInspectorOpen(false);
+    setIsVideoOpen(false);
+    setSeekTime(0);
     setError(null);
+    setExportStatus(null);
+    setExportError(null);
+  };
+
+  const handleCopyVault = (path: string) => {
+    navigator.clipboard.writeText(path);
+    setCopiedVaultPath(true);
+    setTimeout(() => setCopiedVaultPath(false), 2000);
   };
 
   return (
@@ -219,11 +299,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Active Graph State (Task 4 Scaffold + Container for Task 5 & 6) */}
+        {/* Active Graph & Desktop Viewport Area */}
         {!isLoading && graphData && (
           <div className="flex-1 flex flex-col h-full relative z-10">
-            {/* Video Overview Strip */}
-            <div className="px-6 py-3 border-b border-white/10 bg-[#101622]/60 backdrop-blur-md flex items-center justify-between gap-4 flex-wrap">
+            {/* Top Video Overview & Header Actions Strip */}
+            <div className="px-6 py-3 border-b border-white/10 bg-[#101622]/80 backdrop-blur-md flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-4 flex-wrap">
                 <div>
                   <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
@@ -263,11 +343,67 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2.5">
+              {/* Action Buttons in Top Bar */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {/* Header Button: Export to Obsidian */}
                 <button
+                  type="button"
+                  onClick={handleExportObsidian}
+                  disabled={isExporting}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 shadow-sm ${
+                    exportStatus?.success
+                      ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/25'
+                      : 'bg-violet-500/15 hover:bg-violet-500/25 border-violet-400/30 text-violet-200'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title="Export complete graph to Obsidian vault with bidirectional wikilinks"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-300" />
+                      <span>Exporting Vault...</span>
+                    </>
+                  ) : exportStatus?.success ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Obsidian Synced</span>
+                    </>
+                  ) : (
+                    <>
+                      <FolderSync className="w-3.5 h-3.5 text-violet-400" />
+                      <span>Export to Obsidian</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Video Player Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsVideoOpen(true)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-200 transition-colors flex items-center gap-1.5"
+                  title="Open synchronized video player"
+                >
+                  <Play className="w-3.5 h-3.5 fill-rose-400 text-rose-400" />
+                  <span>Video Player</span>
+                </button>
+
+                {/* Inspector Drawer Toggle (if closed but node is selected) */}
+                {selectedNode && !isInspectorOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setIsInspectorOpen(true)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-medium bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/30 text-sky-200 transition-colors flex items-center gap-1.5"
+                    title="Open Concept Inspector drawer"
+                  >
+                    <PanelRightOpen className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Inspect Concept</span>
+                  </button>
+                )}
+
+                {/* Reset / Analyze Another */}
+                <button
+                  type="button"
                   onClick={handleReset}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Analyze Another
@@ -275,134 +411,104 @@ export default function App() {
               </div>
             </div>
 
-            {/* Executive Takeaway Bar */}
+            {/* Executive Takeaway Strip */}
             {graphData.executive_takeaway && (
-              <div className="px-6 py-2 bg-sky-950/20 border-b border-sky-500/15 text-xs text-sky-200/90 flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <span className="font-semibold text-sky-300">Executive Takeaway:</span>
-                <span className="truncate">{graphData.executive_takeaway}</span>
+              <div className="px-6 py-2 bg-sky-950/20 border-b border-sky-500/15 text-xs text-sky-200/90 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="font-semibold text-sky-300 shrink-0">Executive Takeaway:</span>
+                  <span className="truncate">{graphData.executive_takeaway}</span>
+                </div>
+
+                {/* Quick vault path indicator if synced */}
+                {exportStatus?.success && (
+                  <div className="hidden md:flex items-center gap-1.5 shrink-0 font-mono text-[11px] text-emerald-300 bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="truncate max-w-[280px]">
+                      {formatVaultPath(exportStatus.export_dir)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyVault(formatVaultPath(exportStatus.export_dir))}
+                      className="p-0.5 hover:text-white text-slate-400"
+                      title="Copy path"
+                    >
+                      {copiedVaultPath ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Graph & Inspector Canvas Area */}
-            <div className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-auto">
-              {/* Left 2 Cols: Graph Canvas Viewport Container */}
-              <div className="lg:col-span-2 rounded-2xl glass-panel p-6 flex flex-col relative overflow-hidden min-h-[460px]">
-                <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
+            {/* Obsidian Graph Viewport Area */}
+            <div className="flex-1 p-6 flex flex-col relative overflow-hidden min-h-[500px]">
+              <div className="rounded-2xl glass-panel p-4 sm:p-6 flex-1 flex flex-col relative overflow-hidden">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <Network className="w-4 h-4 text-sky-400" />
                     <span className="text-sm font-semibold text-white">Obsidian Force Graph</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-mono">
                       60 FPS
                     </span>
                   </div>
+
                   {/* Category Legend */}
-                  <div className="hidden sm:flex items-center gap-2 text-xs">
-                    <span className="flex items-center gap-1 text-sky-400">
-                      <span className="w-2 h-2 rounded-full bg-sky-400" /> Concept
+                  <div className="hidden sm:flex items-center gap-3 text-xs">
+                    <span className="flex items-center gap-1.5 text-sky-400">
+                      <span className="w-2 h-2 rounded-full bg-sky-400" /> Core Concept
                     </span>
-                    <span className="flex items-center gap-1 text-emerald-400">
+                    <span className="flex items-center gap-1.5 text-emerald-400">
                       <span className="w-2 h-2 rounded-full bg-emerald-400" /> Method
                     </span>
-                    <span className="flex items-center gap-1 text-violet-400">
+                    <span className="flex items-center gap-1.5 text-violet-400">
                       <span className="w-2 h-2 rounded-full bg-violet-400" /> Tool
                     </span>
-                    <span className="flex items-center gap-1 text-amber-400">
+                    <span className="flex items-center gap-1.5 text-amber-400">
                       <span className="w-2 h-2 rounded-full bg-amber-400" /> Insight
                     </span>
-                    <span className="flex items-center gap-1 text-rose-400">
+                    <span className="flex items-center gap-1.5 text-rose-400">
                       <span className="w-2 h-2 rounded-full bg-rose-400" /> Warning
                     </span>
                   </div>
                 </div>
 
-                {/* Obsidian Force-Directed Canvas Graph */}
-                <div className="flex-1 w-full min-h-[460px] relative rounded-xl overflow-hidden bg-[#070A10] border border-white/5">
+                {/* 60 FPS Force Canvas */}
+                <div className="flex-1 w-full min-h-[500px] relative rounded-xl overflow-hidden bg-[#070A10] border border-white/5">
                   <ForceGraphView
                     nodes={graphData.nodes}
                     edges={graphData.edges}
                     selectedNode={selectedNode}
-                    onSelectNode={setSelectedNode}
+                    onSelectNode={handleSelectNode}
                   />
                 </div>
               </div>
-
-              {/* Right Col: Node Inspector Preview (Task 4 Scaffold -> Task 6 will mount NodeInspector) */}
-              <div className="rounded-2xl glass-panel p-6 flex flex-col min-h-[460px]">
-                <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-sky-400" />
-                    Concept Inspector
-                  </h3>
-                  {selectedNode && (
-                    <span className="text-xs font-mono text-slate-400">
-                      {selectedNode.timestamp_formatted}
-                    </span>
-                  )}
-                </div>
-
-                {selectedNode ? (
-                  <div className="space-y-4 flex-1 flex flex-col justify-between">
-                    <div className="space-y-3">
-                      <div>
-                        {(() => {
-                          const style = getCategoryStyle(selectedNode.category);
-                          return (
-                            <span className={`inline-block text-[11px] font-medium px-2.5 py-0.5 rounded-md border ${style.border} ${style.bg} ${style.text} mb-2`}>
-                              {selectedNode.category}
-                            </span>
-                          );
-                        })()}
-                        <h4 className="text-lg font-bold text-white tracking-tight">
-                          {selectedNode.label}
-                        </h4>
-                        <p className="text-xs text-sky-300/90 mt-1 font-medium leading-relaxed">
-                          {selectedNode.summary}
-                        </p>
-                      </div>
-
-                      <div className="p-3.5 rounded-xl bg-black/30 border border-white/5">
-                        <p className="text-xs text-slate-300 leading-relaxed">
-                          {selectedNode.description}
-                        </p>
-                      </div>
-
-                      {selectedNode.key_points && selectedNode.key_points.length > 0 && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                            Key Points
-                          </p>
-                          <ul className="space-y-1">
-                            {selectedNode.key_points.map((pt, i) => (
-                              <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                                <span className="text-sky-400 mt-1">•</span>
-                                <span>{pt}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-4 border-t border-white/10 flex items-center justify-between">
-                      <a
-                        href={`https://www.youtube.com/watch?v=${graphData.video_id}&t=${selectedNode.timestamp_seconds}s`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-sky-400 hover:text-sky-300 font-medium transition-colors"
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        Jump to {selectedNode.timestamp_formatted}
-                      </a>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center text-center text-xs text-slate-500">
-                    Select a node to inspect details and video timestamp
-                  </div>
-                )}
-              </div>
             </div>
+
+            {/* Slide-Out Concept Inspector Drawer */}
+            <NodeInspector
+              selectedNode={isInspectorOpen ? selectedNode : null}
+              videoId={graphData.video_id}
+              videoTitle={graphData.video_title}
+              allNodes={graphData.nodes}
+              allEdges={graphData.edges}
+              onSelectNode={handleSelectNode}
+              onClose={() => setIsInspectorOpen(false)}
+              onExportObsidian={handleExportObsidian}
+              onJumpToTimestamp={handleJumpToTimestamp}
+              isExporting={isExporting}
+              exportStatus={exportStatus}
+              exportError={exportError}
+            />
+
+            {/* Embedded Dockable/Modal YouTube Player */}
+            <VideoPlayerModal
+              videoId={graphData.video_id}
+              videoTitle={graphData.video_title}
+              channel={graphData.channel}
+              seekTime={seekTime}
+              isOpen={isVideoOpen}
+              onClose={() => setIsVideoOpen(false)}
+            />
           </div>
         )}
       </main>

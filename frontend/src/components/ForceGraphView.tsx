@@ -209,6 +209,16 @@ export const ForceGraphView: React.FC<ForceGraphViewProps> = ({
     }
   };
 
+  // Smoothly shift camera view onto selectedNode when selected (e.g. clicking neighbor links)
+  useEffect(() => {
+    if (!fgRef.current || !selectedNode) return;
+    const found = graphData.nodes.find((n) => n.id === selectedNode.id);
+    if (found && found.x !== undefined && found.y !== undefined) {
+      fgRef.current.centerAt(found.x, found.y, 500);
+      fgRef.current.zoom(2.0, 500);
+    }
+  }, [selectedNode?.id, graphData.nodes]);
+
   // Node Click: centers camera and zooms smoothly onto clicked node
   const handleNodeClick = (node: any) => {
     onSelectNode(node as GraphNode);

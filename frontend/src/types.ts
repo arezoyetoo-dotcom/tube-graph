@@ -50,8 +50,11 @@ export interface ExportObsidianResponse {
   export_dir: string;
   vault_base: string;
   video_title: string;
-  nodes_exported: number;
-  index_file: string;
+  nodes_exported?: number;
+  files_written?: string[];
+  files_count?: number;
+  message?: string;
+  index_file?: string;
 }
 
 export interface CategoryStyle {
