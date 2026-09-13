@@ -29,6 +29,7 @@ class VideoGraphResponse(BaseModel):
     nodes: List[GraphNode] = Field(default_factory=list)
     edges: List[GraphEdge] = Field(default_factory=list)
     executive_takeaway: str = ""
+    vault_base: Optional[str] = None
 
 
 class AnalyzeRequest(BaseModel):

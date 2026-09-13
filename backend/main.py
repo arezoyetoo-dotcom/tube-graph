@@ -1,4 +1,6 @@
 import logging
+import os
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,10 +9,12 @@ try:
     from models import VideoGraphResponse, AnalyzeRequest, GraphNode, GraphEdge
     from services.transcript import extract_youtube_id, fetch_transcript, get_video_metadata, format_timestamp
     from services.ai_graph import generate_graph_from_transcript
+    from services.obsidian_export import export_graph_to_obsidian, sanitize_filename
 except ImportError:
     from backend.models import VideoGraphResponse, AnalyzeRequest, GraphNode, GraphEdge
     from backend.services.transcript import extract_youtube_id, fetch_transcript, get_video_metadata, format_timestamp
     from backend.services.ai_graph import generate_graph_from_transcript
+    from backend.services.obsidian_export import export_graph_to_obsidian, sanitize_filename
 
 logger = logging.getLogger("tubegraph")
 
@@ -65,6 +69,27 @@ def analyze(request: AnalyzeRequest):
         graph.video_title = video_title
 
     return graph
+
+
+@app.post("/api/export-obsidian")
+def export_obsidian(
+    graph: VideoGraphResponse,
+    vault_base: Optional[str] = None,
+):
+    """
+    Exports a VideoGraphResponse directly into an Obsidian vault with
+    bidirectional [[wikilinks]], YAML frontmatter, and timestamp links.
+    """
+    target_vault = vault_base or graph.vault_base or os.getenv("OBSIDIAN_VAULT_BASE", "/mnt/d/py/projects")
+    try:
+        result = export_graph_to_obsidian(graph, vault_base=target_vault)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to export graph to Obsidian: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export Obsidian notes: {str(e)}",
+        )
 
 
 if __name__ == "__main__":
