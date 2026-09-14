@@ -13,6 +13,8 @@ import {
   Activity
 } from 'lucide-react';
 import { GraphNode, GraphEdge, getCategoryColor, getCategoryStyle } from '../types';
+// @ts-ignore
+import { forceCollide } from 'd3-force-3d';
 
 export interface ForceGraphViewProps {
   nodes: GraphNode[];
@@ -41,9 +43,9 @@ function getEndpointId(endpoint: string | GraphNode | { id?: string | number } |
 }
 
 // Default Obsidian Physics Constants
-const DEFAULT_CHARGE = -220;
-const DEFAULT_LINK_DISTANCE = 95;
-const DEFAULT_CENTER_GRAVITY = 0.15;
+const DEFAULT_CHARGE = -320;
+const DEFAULT_LINK_DISTANCE = 120;
+const DEFAULT_CENTER_GRAVITY = 0.12;
 
 export const ForceGraphView: React.FC<ForceGraphViewProps> = ({
   nodes,
@@ -159,6 +161,17 @@ export const ForceGraphView: React.FC<ForceGraphViewProps> = ({
     const center = fgRef.current.d3Force('center');
     if (center && typeof (center as any).strength === 'function') {
       (center as any).strength(centerStrength);
+    }
+
+    // Apply anti-collision radius to eliminate node overlap
+    const collide = fgRef.current.d3Force('collide');
+    if (collide && typeof (collide as any).radius === 'function') {
+      (collide as any).radius((node: any) => Math.max(6, (node.val || 5) * 1.5) + 20);
+    } else {
+      fgRef.current.d3Force(
+        'collide',
+        forceCollide((node: any) => Math.max(6, (node.val || 5) * 1.5) + 20)
+      );
     }
 
     fgRef.current.d3ReheatSimulation();
@@ -345,11 +358,13 @@ export const ForceGraphView: React.FC<ForceGraphViewProps> = ({
       ctx.arc(x, y, baseR, 0, 2 * Math.PI);
       ctx.stroke();
 
-      // 3. CRISP TYPOGRAPHY LABELS
-      const shouldShowLabel = globalScale > 0.45 || isHovered || isSelected || isNeighbor;
+      // 3. CRISP TYPOGRAPHY LABELS (Decluttered Obsidian Style)
+      // When zoomed out, prioritize hovered, selected, neighbors, or core high-weight concepts
+      const isCoreNode = node.category === 'Core Concept' || (node.val && node.val >= 10);
+      const shouldShowLabel = globalScale > 0.8 || isHovered || isSelected || isNeighbor || (globalScale > 0.5 && isCoreNode);
       if (shouldShowLabel) {
         const label = node.label || node.id;
-        const fontSize = Math.max(9, Math.min(13, 11 / Math.sqrt(globalScale)));
+        const fontSize = Math.max(9, Math.min(12, 10 / Math.sqrt(Math.max(globalScale, 0.55))));
 
         ctx.font = `${isSelected || isHovered ? '600' : '500'} ${fontSize}px Inter, -apple-system, sans-serif`;
         ctx.textAlign = 'center';
@@ -371,7 +386,7 @@ export const ForceGraphView: React.FC<ForceGraphViewProps> = ({
         } else if (isNeighbor) {
           ctx.fillStyle = '#e2e8f0';
         } else {
-          ctx.fillStyle = '#cbd5e1';
+          ctx.fillStyle = '#94a3b8';
         }
         ctx.fillText(label, x, textY);
       }
@@ -437,15 +452,15 @@ export const ForceGraphView: React.FC<ForceGraphViewProps> = ({
           }
           return 1.0;
         }}
-        // Directional Particle Flow Dynamics
+        // Directional Particle Flow Dynamics (Quiet by default, active on hover or select)
         linkDirectionalParticles={(link: any) => {
           if (hoverNode) {
-            return isLinkConnectedTo(link, hoverNode.id) ? 4 : 0;
+            return isLinkConnectedTo(link, hoverNode.id) ? 3 : 0;
           }
           if (selectedNode && isLinkConnectedTo(link, selectedNode.id)) {
-            return 3;
+            return 2;
           }
-          return 1;
+          return 0;
         }}
         linkDirectionalParticleSpeed={(link: any) => {
           if (hoverNode && isLinkConnectedTo(link, hoverNode.id)) return 0.008;
