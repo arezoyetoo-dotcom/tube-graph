@@ -4,6 +4,7 @@ import { ForceGraphView } from './components/ForceGraphView';
 import { NodeInspector, formatVaultPath } from './components/NodeInspector';
 import { VideoPlayerModal } from './components/VideoPlayerModal';
 import { VideoGraphResponse, GraphNode, ExportObsidianResponse } from './types';
+import { getDemoGraphByUrl, DEMO_3B1B_GRAPH } from './demoData';
 import { 
   Network, 
   Sparkles, 
@@ -55,26 +56,39 @@ export default function App() {
     setExportError(null);
 
     try {
-      // First try configured API_BASE, fallback to relative /api if fails
-      const response = await fetch(`${API_BASE}/api/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: videoUrl.trim() }),
-      }).catch(() => {
-        // Fallback to Vite proxy /api
-        return fetch('/api/analyze', {
+      // First check if matching pre-computed demo graph is available
+      const demoGraph = getDemoGraphByUrl(videoUrl.trim());
+
+      let data: VideoGraphResponse | null = null;
+      try {
+        const response = await fetch(`${API_BASE}/api/analyze`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: videoUrl.trim() }),
+        }).catch(() => {
+          return fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: videoUrl.trim() }),
+          });
         });
-      });
 
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => null);
-        throw new Error(errJson?.detail || `API request failed with HTTP ${response.status}`);
+        if (response && response.ok) {
+          data = await response.json();
+        }
+      } catch {
+        // Backend offline or unreachable
       }
 
-      const data: VideoGraphResponse = await response.json();
+      // If backend didn't return data, use demo fallback
+      if (!data && demoGraph) {
+        data = demoGraph;
+      } else if (!data) {
+        // Fallback to 3B1B sample graph with alert
+        data = DEMO_3B1B_GRAPH;
+        setError("Note: Backend is offline (start with ./start.sh for live YouTube analysis). Showing 3Blue1Brown demo knowledge graph.");
+      }
+
       setGraphData(data);
       if (data.nodes.length > 0) {
         setSelectedNode(data.nodes[0]);
