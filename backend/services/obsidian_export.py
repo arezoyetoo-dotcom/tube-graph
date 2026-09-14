@@ -193,7 +193,11 @@ def export_graph_to_obsidian(
         vault_base = os.getenv("OBSIDIAN_VAULT_BASE", "/mnt/d/py/projects")
 
     safe_title = sanitize_filename(graph.video_title or f"Video-{graph.video_id}")
-    export_dir = os.path.join(vault_base, "TubeGraph-Vault", safe_title)
+    knowledge_dir = os.path.join(vault_base, "07 - Knowledge Graphs")
+    if os.path.isdir(knowledge_dir):
+        export_dir = os.path.join(knowledge_dir, "TubeGraph-Vault", safe_title)
+    else:
+        export_dir = os.path.join(vault_base, "TubeGraph-Vault", safe_title)
 
     os.makedirs(export_dir, exist_ok=True)
 
