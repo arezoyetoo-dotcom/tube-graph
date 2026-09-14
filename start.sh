@@ -6,13 +6,13 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 echo "🌌 Starting TubeGraph Backend on port 5417..."
-"$DIR/.venv/bin/uvicorn" backend.main:app --host 0.0.0.0 --port 5417 > "$DIR/backend.log" 2>&1 &
+nohup "$DIR/.venv/bin/uvicorn" backend.main:app --host 0.0.0.0 --port 5417 > "$DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$DIR/backend.pid"
 
 echo "🌌 Starting TubeGraph Frontend on port 5416..."
 cd "$DIR/frontend"
-npm run dev -- --port 5416 --host > "$DIR/frontend.log" 2>&1 &
+nohup npm run dev -- --port 5416 --host > "$DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 echo $FRONTEND_PID > "$DIR/frontend.pid"
 
